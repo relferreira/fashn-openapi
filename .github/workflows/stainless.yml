@@ -13,9 +13,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  STAINLESS_ORG: YOUR_ORG
-  STAINLESS_PROJECT: YOUR_PROJECT
-  OAS_PATH: YOUR_OAS_PATH
+  STAINLESS_ORG: scribo-dev
+  STAINLESS_PROJECT: scribo-fashn-ai
+  OAS_PATH: fashn-api.openapi.yaml
 
 jobs:
   preview:
