@@ -1,0 +1,467 @@
+openapi: 3.0.3
+info:
+  title: FASHN AI API
+  description: |
+    FASHN AI API for virtual try-on predictions. 
+
+    **Rate Limits:**
+    - `/run` - Up to 50 requests per 60 seconds
+    - `/status` - Up to 50 requests per 10 seconds  
+    - `/credits` - Up to 30 requests per 10 seconds
+
+    **Concurrency Limits:**
+    Default concurrency limit of 6 requests per limit.
+
+    **Privacy:**
+    Inputs and outputs are automatically deleted after 72 hours.
+  version: 1.6.0
+  contact:
+    email: support@fashn.ai
+  license:
+    name: Proprietary
+servers:
+  - url: https://api.fashn.ai/v1
+    description: Production server
+security:
+  - bearerAuth: []
+
+paths:
+  /run:
+    post:
+      summary: Run prediction
+      description: Initiate a new try-on prediction
+      operationId: runPrediction
+      tags:
+        - Predictions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - model_name
+                - inputs
+              properties:
+                model_name:
+                  type: string
+                  enum:
+                    - tryon-v1.6
+                    - tryon-v1.5
+                  description: |
+                    Specifies the model version to use for the virtual try-on prediction.
+                    - `tryon-v1.6` - The latest and most advanced model, producing higher-quality outputs at 864×1296 resolution
+                    - `tryon-v1.5` - The previous stable release, generating outputs at 576×864 resolution. Slightly faster than v1.6
+                inputs:
+                  oneOf:
+                    - $ref: "#/components/schemas/TryonV16Inputs"
+                    - $ref: "#/components/schemas/TryonV15Inputs"
+                  description: Contains all the input parameters for the selected model
+            examples:
+              basic_example:
+                summary: Basic request with minimal parameters
+                value:
+                  model_name: "tryon-v1.6"
+                  inputs:
+                    model_image: "http://example.com/path/to/model.jpg"
+                    garment_image: "http://example.com/path/to/garment.jpg"
+              advanced_example:
+                summary: Advanced request with all parameters
+                value:
+                  model_name: "tryon-v1.6"
+                  inputs:
+                    model_image: "http://example.com/path/to/model.jpg"
+                    garment_image: "http://example.com/path/to/garment.jpg"
+                    category: "tops"
+                    segmentation_free: true
+                    moderation_level: "permissive"
+                    garment_photo_type: "flat-lay"
+                    mode: "quality"
+                    seed: 1234
+                    num_samples: 2
+                    output_format: "png"
+                    return_base64: false
+              base64_example:
+                summary: Using base64 encoded images
+                value:
+                  model_name: "tryon-v1.5"
+                  inputs:
+                    model_image: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
+                    garment_image: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
+                    return_base64: true
+              saved_model_example:
+                summary: Using saved model reference
+                value:
+                  model_name: "tryon-v1.6"
+                  inputs:
+                    model_image: "saved:my_favorite_model"
+                    garment_image: "http://example.com/path/to/garment.jpg"
+                    mode: "performance"
+      responses:
+        "200":
+          description: Prediction initiated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Unique identifier for the prediction
+                    example: "123a87r9-4129-4bb3-be18-9c9fb5bd7fc1-u1"
+                  error:
+                    type: string
+                    nullable: true
+                    description: Error message if any
+                    example: null
+              example:
+                id: "123a87r9-4129-4bb3-be18-9c9fb5bd7fc1-u1"
+                error: null
+
+  /status/{id}:
+    get:
+      summary: Get prediction status
+      description: |
+        Receive the status of the prediction by ID. 
+        Unless in a queue, it takes up to 40 seconds to generate a try-on.
+        Poll this endpoint to monitor the prediction's progress and retrieve the final output once available.
+      operationId: getPredictionStatus
+      tags:
+        - Predictions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The prediction ID returned from the /run endpoint
+          example: "123a87r9-4129-4bb3-be18-9c9fb5bd7fc1-u1"
+      responses:
+        "200":
+          description: Prediction status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: The prediction ID
+                    example: "123a87r9-4129-4bb3-be18-9c9fb5bd7fc1-u1"
+                  status:
+                    type: string
+                    enum:
+                      - starting
+                      - in_queue
+                      - processing
+                      - completed
+                      - failed
+                    description: Current status of the prediction
+                  output:
+                    type: array
+                    items:
+                      type: string
+                    description: |
+                      Array of output images (only present when status is 'completed').
+                      Contains URLs when return_base64=false, or base64-encoded strings when return_base64=true.
+                    example:
+                      - "https://cdn.staging.fashn.ai/123a87r9-4129-4bb3-be18-9c9fb5bd7fc1-u1/output_0.png"
+                  error:
+                    type: string
+                    nullable: true
+                    description: Error message if status is 'failed'
+              examples:
+                processing:
+                  summary: Prediction in progress
+                  value:
+                    id: "123a87r9-4129-4bb3-be18-9c9fb5bd7fc1-u1"
+                    status: "processing"
+                    error: null
+                completed:
+                  summary: Prediction completed
+                  value:
+                    id: "123a87r9-4129-4bb3-be18-9c9fb5bd7fc1-u1"
+                    status: "completed"
+                    output:
+                      - "https://cdn.staging.fashn.ai/123a87r9-4129-4bb3-be18-9c9fb5bd7fc1-u1/output_0.png"
+                    error: null
+
+  /credits:
+    get:
+      summary: Get credits balance
+      description: |
+        Retrieve your current FASHN API credits balance. 
+        The response includes your total credits, API subscription credits (if you have an active subscription), 
+        and any additional on-demand credits you've purchased.
+      operationId: getCreditsBalance
+      tags:
+        - Account
+      responses:
+        "200":
+          description: Credits balance retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  credits:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        description: Total available credits
+                        example: 234
+                      subscription:
+                        type: integer
+                        description: Credits from active subscription
+                        example: 100
+                      on_demand:
+                        type: integer
+                        description: On-demand credits purchased separately
+                        example: 134
+                    required:
+                      - total
+                      - subscription
+                      - on_demand
+              example:
+                credits:
+                  total: 234
+                  subscription: 100
+                  on_demand: 134
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: API key for authentication. Use 'Bearer YOUR_API_KEY_HERE' format.
+
+  schemas:
+    TryonV16Inputs:
+      type: object
+      required:
+        - model_image
+        - garment_image
+      properties:
+        model_image:
+          type: string
+          description: |
+            Primary image of the person on whom the virtual try-on will be performed.
+            Can be an image URL, base64 encoded image, or saved model reference (saved:<model_name> for Models Studio users).
+          example: "http://example.com/path/to/model.jpg"
+        garment_image:
+          type: string
+          description: |
+            Reference image of the clothing item to be tried on the model_image.
+            Can be an image URL or base64 encoded image (must include prefix like data:image/jpg;base64,<YOUR_BASE64>).
+          example: "http://example.com/path/to/garment.jpg"
+        category:
+          type: string
+          enum:
+            - auto
+            - tops
+            - bottoms
+            - one-pieces
+          default: auto
+          description: |
+            Garment type classification. Use 'auto' to enable automatic classification.
+            For flat-lay/ghost mannequin images, system detects type automatically.
+            For on-model images, full-body shots default to full outfit swap.
+        segmentation_free:
+          type: boolean
+          default: true
+          description: |
+            Direct garment fitting without clothing segmentation, enabling bulkier garment try-ons
+            with improved preservation of body shape and skin texture. Set to false if original garments are not removed properly.
+        moderation_level:
+          type: string
+          enum:
+            - conservative
+            - permissive
+            - none
+          default: permissive
+          description: |
+            Sets content moderation level for garment images:
+            - 'conservative': Stricter modesty standards, blocks underwear/swimwear/revealing outfits
+            - 'permissive': Allows swimwear/underwear/revealing garments, blocks explicit nudity
+            - 'none': Disables all content moderation (users remain responsible for ethical use)
+        garment_photo_type:
+          type: string
+          enum:
+            - auto
+            - flat-lay
+            - model
+          default: auto
+          description: |
+            Specifies garment photo type to optimize internal parameters:
+            - 'model': Photos of garments on a model
+            - 'flat-lay': Flat-lay or ghost mannequin images  
+            - 'auto': Automatically detect photo type
+        mode:
+          type: string
+          enum:
+            - performance
+            - balanced
+            - quality
+          default: balanced
+          description: |
+            Operation mode:
+            - 'performance': Faster but may compromise quality
+            - 'balanced': Perfect middle ground between speed and quality
+            - 'quality': Slower but delivers highest quality results
+        seed:
+          type: integer
+          default: 42
+          minimum: 0
+          maximum: 4294967295
+          description: |
+            Sets random operations to a fixed state. Use same seed to reproduce results with same inputs,
+            or different seed to force different results.
+        num_samples:
+          type: integer
+          default: 1
+          minimum: 1
+          maximum: 4
+          description: |
+            Number of images to generate in a single run. Multiple images increase chances of getting a good result
+            due to the random element in image generation.
+        output_format:
+          type: string
+          enum:
+            - png
+            - jpeg
+          default: png
+          description: |
+            Desired output image format:
+            - 'png': Highest quality, ideal for content creation
+            - 'jpeg': Faster response with slight compression, suitable for real-time applications
+        return_base64:
+          type: boolean
+          default: false
+          description: |
+            When true, returns generated image as base64-encoded string instead of CDN URL.
+            Enhances privacy as outputs are not stored on servers when enabled.
+            Base64 string includes format prefix (e.g., data:image/png;base64,...)
+
+    TryonV15Inputs:
+      type: object
+      required:
+        - model_image
+        - garment_image
+      properties:
+        model_image:
+          type: string
+          description: |
+            Primary image of the person on whom the virtual try-on will be performed.
+            Can be an image URL, base64 encoded image, or saved model reference (saved:<model_name> for Models Studio users).
+          example: "http://example.com/path/to/model.jpg"
+        garment_image:
+          type: string
+          description: |
+            Reference image of the clothing item to be tried on the model_image.
+            Can be an image URL or base64 encoded image (must include prefix like data:image/jpg;base64,<YOUR_BASE64>).
+          example: "http://example.com/path/to/garment.jpg"
+        category:
+          type: string
+          enum:
+            - auto
+            - tops
+            - bottoms
+            - one-pieces
+          default: auto
+          description: |
+            Garment type classification. Use 'auto' to enable automatic classification.
+            For flat-lay/ghost mannequin images, system detects type automatically.
+            For on-model images, full-body shots default to full outfit swap.
+        segmentation_free:
+          type: boolean
+          default: true
+          description: |
+            Direct garment fitting without clothing segmentation, enabling bulkier garment try-ons
+            with improved preservation of body shape and skin texture. Set to false if original garments are not removed properly.
+        moderation_level:
+          type: string
+          enum:
+            - conservative
+            - permissive
+            - none
+          default: permissive
+          description: |
+            Sets content moderation level for garment images:
+            - 'conservative': Stricter modesty standards, blocks underwear/swimwear/revealing outfits
+            - 'permissive': Allows swimwear/underwear/revealing garments, blocks explicit nudity
+            - 'none': Disables all content moderation (users remain responsible for ethical use)
+        garment_photo_type:
+          type: string
+          enum:
+            - auto
+            - flat-lay
+            - model
+          default: auto
+          description: |
+            Specifies garment photo type to optimize internal parameters:
+            - 'model': Photos of garments on a model
+            - 'flat-lay': Flat-lay or ghost mannequin images  
+            - 'auto': Automatically detect photo type
+        mode:
+          type: string
+          enum:
+            - performance
+            - balanced
+            - quality
+          default: balanced
+          description: |
+            Operation mode:
+            - 'performance': Faster but may compromise quality
+            - 'balanced': Perfect middle ground between speed and quality
+            - 'quality': Slower but delivers highest quality results
+        seed:
+          type: integer
+          default: 42
+          minimum: 0
+          maximum: 4294967295
+          description: |
+            Sets random operations to a fixed state. Use same seed to reproduce results with same inputs,
+            or different seed to force different results.
+        num_samples:
+          type: integer
+          default: 1
+          minimum: 1
+          maximum: 4
+          description: |
+            Number of images to generate in a single run. Multiple images increase chances of getting a good result
+            due to the random element in image generation.
+        output_format:
+          type: string
+          enum:
+            - png
+            - jpeg
+          default: png
+          description: |
+            Desired output image format:
+            - 'png': Highest quality, ideal for content creation
+            - 'jpeg': Faster response with slight compression, suitable for real-time applications
+        return_base64:
+          type: boolean
+          default: false
+          description: |
+            When true, returns generated image as base64-encoded string instead of CDN URL.
+            Enhances privacy as outputs are not stored on servers when enabled.
+            Base64 string includes format prefix (e.g., data:image/png;base64,...)
+
+  parameters:
+    PredictionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The prediction ID returned from the /run endpoint
+      example: "123a87r9-4129-4bb3-be18-9c9fb5bd7fc1-u1"
+
+tags:
+  - name: Predictions
+    description: Operations for running and monitoring virtual try-on predictions
+  - name: Account
+    description: Operations for managing account and credits
