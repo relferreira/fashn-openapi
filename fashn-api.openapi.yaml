@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: FASHN AI API
   description: |
-    FASHN AI API for virtual try-on predictions. 
+    FASHN AI API for virtual try-on. 
 
     **Rate Limits:**
     - `/run` - Up to 50 requests per 60 seconds
